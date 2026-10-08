@@ -1,0 +1,169 @@
+name: Spring AI Inspector
+
+on:
+  push:
+    branches: ['**']
+    tags: ['inspector-v*']
+    paths:
+      - 'spring-ai-inspector/**'
+      - '.github/workflows/inspector.yml'
+  pull_request:
+    paths:
+      - 'spring-ai-inspector/**'
+      - '.github/workflows/inspector.yml'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Artifact version (for example 0.0.1 or 0.0.2-SNAPSHOT)'
+        required: true
+        default: '0.0.1-SNAPSHOT'
+        type: string
+      publish:
+        description: 'Publish the starter and server image after verification'
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: inspector-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      image_tag: ${{ steps.version.outputs.image_tag }}
+      stable: ${{ steps.version.outputs.stable }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Determine artifact version
+        id: version
+        env:
+          REF: ${{ github.ref }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        working-directory: spring-ai-inspector
+        run: |
+          version=$(sed -n 's/^inspectorVersion=//p' gradle.properties)
+          if [[ "$REF" == refs/tags/inspector-v* ]]; then
+            version="${REF#refs/tags/inspector-v}"
+          elif [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            version="$INPUT_VERSION"
+          fi
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9]+([.-][A-Za-z0-9]+)*)?$ ]]; then
+            echo "::error::Invalid Inspector version: $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${version,,}" >> "$GITHUB_OUTPUT"
+          if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "stable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "stable=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build and test only Inspector
+        env:
+          INSPECTOR_VERSION: ${{ steps.version.outputs.version }}
+        working-directory: spring-ai-inspector
+        run: bash ./gradlew build :spring-ai-inspector-starter:java17Test :spring-ai-inspector-starter:generatePomFileForMavenJavaPublication -PinspectorVersion="$INSPECTOR_VERSION" --no-daemon
+      - name: Build and smoke-test server container
+        run: |
+          docker build --tag inspector-server:ci spring-ai-inspector/spring-ai-inspector-server
+          docker run --detach --name inspector-smoke --publish 127.0.0.1:9001:9001 inspector-server:ci
+          trap 'docker logs inspector-smoke; docker rm --force inspector-smoke' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:9001/api/ping | grep -q '"spring-ai-inspector"'; then
+              curl --fail --silent http://127.0.0.1:9001/ > /dev/null
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+      - name: Upload server JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: inspector-server
+          path: spring-ai-inspector/spring-ai-inspector-server/build/libs/spring-ai-inspector-server.jar
+          if-no-files-found: error
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inspector-test-reports
+          path: spring-ai-inspector/*/build/reports/tests/
+
+  publish-starter:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/inspector-v') || (github.event_name == 'workflow_dispatch' && inputs.publish)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Publish starter to the Maven artifacts repository
+        working-directory: spring-ai-inspector
+        env:
+          INSPECTOR_VERSION: ${{ needs.build.outputs.version }}
+          PACKAGES_USER: ${{ vars.MAVEN_PACKAGES_USERNAME || github.repository_owner }}
+          PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+        run: |
+          if [[ -z "$PACKAGES_TOKEN" ]]; then
+            echo "::error::Set PACKAGES_TOKEN with write:packages access to urferr/maven-artefacts."
+            exit 1
+          fi
+          bash ./gradlew :spring-ai-inspector-starter:publishMavenJavaPublicationToGitHubPackagesRepository -PinspectorVersion="$INSPECTOR_VERSION" --no-daemon
+
+  publish-server:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/inspector-v') || (github.event_name == 'workflow_dispatch' && inputs.publish)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: inspector-server
+          path: spring-ai-inspector/spring-ai-inspector-server/build/libs
+      - name: Determine image name
+        id: image
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: echo "name=ghcr.io/${OWNER,,}/spring-ai-inspector-server" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: metadata
+        with:
+          images: ${{ steps.image.outputs.name }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=${{ needs.build.outputs.image_tag }}
+            type=sha
+            type=raw,value=latest,enable=${{ needs.build.outputs.stable }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: spring-ai-inspector/spring-ai-inspector-server
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}

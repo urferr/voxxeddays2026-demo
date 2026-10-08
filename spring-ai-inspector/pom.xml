@@ -21,7 +21,7 @@
 	<description>Live inspector for Spring AI applications: what the app sent, what the advisors changed, and the raw model traffic</description>
 
 	<properties>
-		<java.version>17</java.version>
+		<java.version>25</java.version>
 		<spring-ai.version>2.1.0-M1</spring-ai.version>
 	</properties>
 

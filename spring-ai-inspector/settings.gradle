@@ -1,0 +1,7 @@
+plugins {
+	id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
+rootProject.name = 'spring-ai-inspector'
+
+include 'spring-ai-inspector-starter', 'spring-ai-inspector-server'

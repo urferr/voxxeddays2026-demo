@@ -51,7 +51,7 @@ the runs you recorded beforehand.
 To have recordings available right after startup, put the exported files in a folder:
 
 ```bash
-java -jar spring-ai-inspector/spring-ai-inspector-server/target/spring-ai-inspector-server-*.jar --spring.ai.inspector.preload-dir=./recordings
+java -jar spring-ai-inspector-server/build/libs/spring-ai-inspector-server.jar --spring.ai.inspector.preload-dir=./recordings
 ```
 
 ## Modules
@@ -66,12 +66,12 @@ In this repo, `common` depends on the starter, so every demo gets it transitivel
 ## Usage
 
 ```bash
-mvn -pl spring-ai-inspector/spring-ai-inspector-server spring-boot:run
-# or: java -jar spring-ai-inspector/spring-ai-inspector-server/target/spring-ai-inspector-server-*.jar
+./gradlew :spring-ai-inspector-server:bootRun
+# or: java -jar spring-ai-inspector-server/build/libs/spring-ai-inspector-server.jar
 open http://localhost:9001
 ```
 
-Then run any demo as usual. Nothing in the demos needs to change.
+Run these commands from the spring-ai-inspector directory (use .\gradlew.bat on Windows). Then run any demo as usual. Nothing in the demos needs to change.
 
 To inspect any other Spring AI application, add the starter:
 
@@ -134,8 +134,166 @@ Bookmark one to open a (preloaded) recording directly in the right view during a
 
 ## Building
 
-The demos are Spring Boot fat jars. Maven doesn't repackage a module whose own sources didn't change, so after
-changing the starter run `mvn clean install` (not just `install`) before starting demos from their jars.
+The Inspector has an independent Gradle build containing only the starter and server.
+The build uses a Java 25 toolchain. The Foojay resolver downloads a matching JDK automatically
+if none is installed. Start Gradle with your existing JDK 25; no separate JDK 17 installation is needed
+for the normal build. Gradle still needs an installed Java runtime to start.
+The starter is compiled with `--release 17` and can be used on Java 17 or later; the server requires Java 25.
+Node.js 22 or later is needed for the existing UI tests. CI uses JDK 25 and Node.js 24.
+The wrapper pins Gradle 9.8.1 and verifies its distribution checksum; no Gradle installation is needed.
+Both modules use the Spring Boot and dependency-management plugins. Boot dependency management is
+imported automatically; the starter imports the Spring AI BOM through `dependencyManagement`.
+
+From the `spring-ai-inspector` directory:
+
+```bash
+./gradlew build
+./gradlew :spring-ai-inspector-starter:build
+./gradlew :spring-ai-inspector-server:build
+./gradlew :spring-ai-inspector-starter:publishToMavenLocal
+```
+
+On Windows use `.\gradlew.bat`. `build` runs Java tests and the server's Node UI tests.
+The optional `./gradlew :spring-ai-inspector-starter:java17Test` task runs the starter tests on Java 17.
+CI runs it in addition to the normal build; Foojay can provision Java 17 for this compatibility check.
+The starter produces a normal library JAR and a sources JAR; the server produces
+`spring-ai-inspector-server/build/libs/spring-ai-inspector-server.jar`.
+The optional VectorStore integration does not add a vector-store dependency to consuming applications.
+
+The existing Maven POMs are retained for the demo reactor. Both build definitions must keep their
+Boot/AI versions and dependencies in sync. After changing the starter, either publish it to Maven local
+with Gradle before rebuilding demos, or run `mvn clean install` for the Maven reactor. The existing demo
+builds use `0.0.1-SNAPSHOT`; using a release also requires updating their managed starter version.
+
+### GitHub Actions and publishing
+
+The repository-root workflow `.github/workflows/inspector.yml` builds only Inspector when its files
+or the workflow change. It runs Java/UI tests, builds the server image, and smoke-tests its API and UI.
+Pull requests and branch pushes do not publish packages.
+
+For publishing, configure the following in **urferr/voxxeddays2026-demo → Settings → Secrets and variables → Actions**:
+
+- Secret `PACKAGES_TOKEN`: a personal access token (classic) with `write:packages` and access to
+  `urferr/maven-artefacts`. The Maven registry is associated with that separate repository, so this
+  workflow uses a dedicated token rather than assuming its own `GITHUB_TOKEN` can write there.
+- Optional variable `MAVEN_PACKAGES_USERNAME`: the token owner's GitHub login; defaults to `urferr`.
+- The server image uses the workflow's `GITHUB_TOKEN` with `packages: write`, without an additional secret.
+  If the GHCR package already exists, grant the source repository Actions access to it.
+
+Commit and push the branch, then merge the workflow into the default branch so it appears under
+**Actions → Spring AI Inspector**. To publish, either run it manually with `publish=true` and the desired
+`version`, or push an Inspector-specific tag pointing to a commit containing this workflow:
+
+```bash
+git tag inspector-v0.0.1
+git push origin inspector-v0.0.1
+```
+
+Tag `inspector-v0.0.1` publishes starter version `0.0.1` and image tags `0.0.1`, `sha-<commit>`, and
+`latest`. Prereleases and snapshots do not update `latest`; image tags are lowercase
+(for example `0.0.2-snapshot`). Use a new version for each release. The Maven and container publish
+jobs are independent after successful verification; one may succeed while the other fails.
+
+For a local Maven publication, use your existing `gpr.user` and `gpr.key` properties in
+`~/.gradle/gradle.properties`. These take precedence over the environment-variable fallbacks
+`PACKAGES_USER` and `PACKAGES_TOKEN` (used by CI). Then run:
+
+```bash
+./gradlew :spring-ai-inspector-starter:publishMavenJavaPublicationToGitHubPackagesRepository -PinspectorVersion=0.0.1
+```
+
+Versions and the Maven target are defined in `gradle.properties`; override the target with
+`-PgithubPackagesRepository=owner/repository` if needed.
+
+### Using the published starter
+
+GitHub's Maven registry requires authentication even for public packages. Consumers need a token
+(classic) with `read:packages` and access to `urferr/maven-artefacts`.
+Keep credentials in environment variables or your user configuration, not in committed build files.
+
+For Gradle (Groovy DSL):
+
+```groovy
+repositories {
+	mavenCentral()
+	maven {
+		url = uri('https://maven.pkg.github.com/urferr/maven-artefacts')
+		credentials {
+			username = providers.gradleProperty('gpr.user')
+				.orElse(providers.environmentVariable('PACKAGES_USER')).orNull
+			password = providers.gradleProperty('gpr.key')
+				.orElse(providers.environmentVariable('PACKAGES_TOKEN')).orNull
+		}
+		content {
+			includeModule('org.springaicommunity', 'spring-ai-inspector-starter')
+		}
+	}
+}
+
+dependencies {
+	implementation 'org.springaicommunity:spring-ai-inspector-starter:0.0.1'
+}
+```
+
+For Maven, add the dependency shown above with version `0.0.1` and this repository to your POM:
+
+```xml
+<repositories>
+	<repository>
+		<id>github-inspector</id>
+		<url>https://maven.pkg.github.com/urferr/maven-artefacts</url>
+	</repository>
+</repositories>
+```
+
+Add matching credentials to your user `~/.m2/settings.xml`:
+
+```xml
+<settings>
+	<servers>
+		<server>
+			<id>github-inspector</id>
+			<username>${env.PACKAGES_USER}</username>
+			<password>${env.PACKAGES_TOKEN}</password>
+		</server>
+	</servers>
+</settings>
+```
+
+These release examples become usable after the first successful publication.
+
+### Server image
+
+CI publishes `linux/amd64` images to `ghcr.io/urferr/spring-ai-inspector-server`.
+For a private image, first authenticate with a token (classic) with `read:packages`:
+
+```bash
+printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u urferr --password-stdin
+docker pull ghcr.io/urferr/spring-ai-inspector-server:0.0.1
+docker run --rm -p 127.0.0.1:9001:9001 ghcr.io/urferr/spring-ai-inspector-server:0.0.1
+```
+
+To allow unauthenticated pulls, change the container package visibility to public in GitHub's package settings.
+
+For a local image, build the JAR first:
+
+```bash
+./gradlew :spring-ai-inspector-server:build
+docker build -t spring-ai-inspector-server:local spring-ai-inspector-server
+docker run --rm -p 127.0.0.1:9001:9001 spring-ai-inspector-server:local
+```
+
+The container runs as a non-root user on JRE 25 and sets `SERVER_ADDRESS=0.0.0.0` so Docker can forward
+connections. The host port above stays bound to loopback because the Inspector exposes prompts, tool
+results and memory. The regular JAR keeps its existing local-only default. Open `http://localhost:9001`
+and start instrumented applications with `spring.ai.inspector.url=http://localhost:9001`.
+
+A provider upstream reported as `localhost` points inside the container, not at the Docker host.
+In particular, the current starter routes Ollama only for its default localhost base URL; changing
+that URL to `host.docker.internal` bypasses its wire capture. For local Ollama inspection, use the JAR
+directly or arrange container networking so the reported upstream is reachable. The server fallback
+`SPRING_AI_INSPECTOR_UPSTREAMS_OLLAMA` applies only when the run did not report an upstream; it cannot
+override a run's reported localhost URL.
 
 ### UI code
 
@@ -158,7 +316,7 @@ Every module except `main.js` can be imported without a browser. Recorded demo r
 drive the real model and render code in Node tests:
 
 ```bash
-node --test spring-ai-inspector/spring-ai-inspector-server/src/test/js/*.test.mjs
+node --test spring-ai-inspector-server/src/test/js/*.test.mjs
 ```
 
 ## Limitations
