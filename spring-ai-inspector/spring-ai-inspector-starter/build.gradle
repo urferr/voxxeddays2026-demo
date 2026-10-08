@@ -1,0 +1,96 @@
+plugins {
+	id 'java-library'
+	id 'org.springframework.boot'
+	id 'io.spring.dependency-management'
+	id 'maven-publish'
+}
+
+java {
+	sourceCompatibility = JavaVersion.VERSION_17
+	targetCompatibility = JavaVersion.VERSION_17
+	withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+	options.release = 17
+}
+
+tasks.register('java17Test', Test) {
+	group = 'verification'
+	description = 'Verifies starter runtime compatibility with Java 17.'
+	dependsOn tasks.named('testClasses')
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	javaLauncher = javaToolchains.launcherFor {
+		languageVersion = JavaLanguageVersion.of(17)
+	}
+}
+
+tasks.named('bootJar') {
+	enabled = false
+}
+
+tasks.named('jar') {
+	archiveClassifier = ''
+}
+
+dependencyManagement {
+	imports {
+		mavenBom "org.springframework.ai:spring-ai-bom:${springAiVersion}"
+	}
+}
+
+dependencies {
+	api 'org.springframework.boot:spring-boot-autoconfigure'
+	api 'org.springframework.ai:spring-ai-client-chat'
+	compileOnly 'org.springframework.ai:spring-ai-vector-store'
+	testImplementation 'org.springframework.ai:spring-ai-vector-store'
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+publishing {
+	publications {
+		mavenJava(MavenPublication) {
+			from components.java
+			versionMapping {
+				allVariants {
+					fromResolutionResult()
+				}
+			}
+			pom {
+				name = 'Spring AI Inspector Starter'
+				description = 'Auto-configured instrumentation for Spring AI applications'
+				url = 'https://github.com/urferr/voxxeddays2026-demo/tree/main-fixed/spring-ai-inspector'
+				// Preserve Maven's optional dependency without requiring it in Gradle consumers.
+				withXml {
+					def dependency = asNode().dependencies[0].appendNode('dependency')
+					dependency.appendNode('groupId', 'org.springframework.ai')
+					dependency.appendNode('artifactId', 'spring-ai-vector-store')
+					dependency.appendNode('version', springAiVersion)
+					dependency.appendNode('optional', 'true')
+				}
+			}
+		}
+	}
+	repositories {
+		maven {
+			name = 'GitHubPackages'
+			url = uri("https://maven.pkg.github.com/${providers.gradleProperty('githubPackagesRepository').get()}")
+			credentials {
+				username = providers.gradleProperty('gpr.user')
+					.orElse(providers.environmentVariable('PACKAGES_USER'))
+					.orNull
+				password = providers.gradleProperty('gpr.key')
+					.orElse(providers.environmentVariable('PACKAGES_TOKEN'))
+					.orNull
+			}
+		}
+		if (providers.gradleProperty('localPublishingRepository').isPresent()) {
+			maven {
+				name = 'Verification'
+				url = uri(providers.gradleProperty('localPublishingRepository').get())
+			}
+		}
+	}
+}

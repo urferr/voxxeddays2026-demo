@@ -1,0 +1,31 @@
+plugins {
+	id 'org.springframework.boot'
+	id 'io.spring.dependency-management'
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('bootJar') {
+	archiveFileName = 'spring-ai-inspector-server.jar'
+}
+
+tasks.named('jar') {
+	enabled = false
+}
+
+tasks.register('uiTest', Exec) {
+	group = 'verification'
+	description = 'Runs the existing UI tests with Node.js (22 or later).'
+	workingDir = projectDir
+	commandLine(['node', '--test'] + fileTree('src/test/js') {
+		include '*.test.mjs'
+	}.files.sort().collect { it.absolutePath })
+}
+
+tasks.named('check') {
+	dependsOn tasks.named('uiTest')
+}
