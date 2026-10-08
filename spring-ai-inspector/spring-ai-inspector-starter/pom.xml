@@ -13,6 +13,10 @@
 	<description>Auto-configured instrumentation that reports a Spring AI application's ChatClient calls, tool runs,
 		vector searches, memory and model traffic to a running Spring AI Inspector. Inactive when no inspector is reachable.</description>
 
+	<properties>
+		<java.version>17</java.version>
+	</properties>
+
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
