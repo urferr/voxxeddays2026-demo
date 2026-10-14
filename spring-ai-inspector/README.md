@@ -369,9 +369,26 @@ docker build -t spring-ai-inspector-server:local spring-ai-inspector-server
 docker run --rm -p 127.0.0.1:9001:9001 spring-ai-inspector-server:local
 ```
 
+To run the published GHCR image with Docker Compose from the `spring-ai-inspector` directory:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+The Compose service uses `ghcr.io/urferr/spring-ai-inspector-server:0.0.1-snapshot` and
+`restart: unless-stopped`, so it restarts automatically until explicitly stopped. For a private image,
+authenticate as described above before pulling. To update, run both commands again. Use
+`docker compose logs -f` to follow the logs and `docker compose down` to stop and remove the container.
+
+Compose maps host port `49998` on all host interfaces to container port `9001`. Open
+`http://localhost:49998` locally or `http://<docker-host-ip>:49998` from another device on the network.
+Set `spring.ai.inspector.url` in instrumented applications to the corresponding URL. The host firewall
+must allow inbound connections on port `49998` for access from other devices.
+
 The container runs as a non-root user on JRE 25 and sets `SERVER_ADDRESS=0.0.0.0` so Docker can forward
-connections. The host port above stays bound to loopback because the Inspector exposes prompts, tool
-results and memory. The regular JAR keeps its existing local-only default. Open `http://localhost:9001`
+connections. The `docker run` examples above bind the host port to loopback; Compose also allows network
+access to the Inspector's prompts, tool results and memory. The regular JAR keeps its existing local-only default. Open `http://localhost:9001`
 and start instrumented applications with `spring.ai.inspector.url=http://localhost:9001`.
 
 A provider upstream reported as `localhost` points inside the container, not at the Docker host.

@@ -1,0 +1,6 @@
+services:
+  spring-ai-inspector-server:
+    image: ghcr.io/urferr/spring-ai-inspector-server:0.0.1-snapshot
+    ports:
+      - "49998:9001"
+    restart: unless-stopped
