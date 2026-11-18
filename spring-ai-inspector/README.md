@@ -381,10 +381,10 @@ The Compose service uses `ghcr.io/urferr/spring-ai-inspector-server:0.0.1-snapsh
 authenticate as described above before pulling. To update, run both commands again. Use
 `docker compose logs -f` to follow the logs and `docker compose down` to stop and remove the container.
 
-Compose maps host port `49899` on all host interfaces to container port `9001`. Open
-`http://localhost:49899` locally or `http://<docker-host-ip>:49899` from another device on the network.
+Compose maps host port `50002` on all host interfaces to container port `9001`. Open
+`http://localhost:50002` locally or `http://<docker-host-ip>:50002` from another device on the network.
 Set `spring.ai.inspector.url` in instrumented applications to the corresponding URL. The host firewall
-must allow inbound connections on port `49899` for access from other devices.
+must allow inbound connections on port `50002` for access from other devices.
 
 The container runs as a non-root user on JRE 25 and sets `SERVER_ADDRESS=0.0.0.0` so Docker can forward
 connections. The `docker run` examples above bind the host port to loopback; Compose also allows network
