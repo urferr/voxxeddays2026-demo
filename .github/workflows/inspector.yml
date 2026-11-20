@@ -91,17 +91,20 @@ jobs:
           done
           exit 1
       - name: Upload server JAR
+        if: ${{ success() && (startsWith(github.ref, 'refs/tags/inspector-v') || (github.event_name == 'workflow_dispatch' && inputs.publish)) }}
         uses: actions/upload-artifact@v4
         with:
           name: inspector-server
           path: spring-ai-inspector/spring-ai-inspector-server/build/libs/spring-ai-inspector-server.jar
+          retention-days: 1
           if-no-files-found: error
       - name: Upload test reports
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: inspector-test-reports
           path: spring-ai-inspector/*/build/reports/tests/
+          retention-days: 3
 
   publish-starter:
     needs: build
@@ -161,6 +164,8 @@ jobs:
             type=sha
             type=raw,value=latest,enable=${{ needs.build.outputs.stable }}
       - uses: docker/build-push-action@v6
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: 'false'
         with:
           context: spring-ai-inspector/spring-ai-inspector-server
           push: true
