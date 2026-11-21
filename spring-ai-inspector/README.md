@@ -362,9 +362,7 @@ docker run --rm -p 127.0.0.1:9001:9001 ghcr.io/urferr/spring-ai-inspector-server
 
 To allow unauthenticated pulls, change the container package visibility to public in GitHub's package settings.
 
-For a local image, build and load it into Docker with Jib. The build selects
-`linux/arm64` on an ARM64 JVM and `linux/amd64` otherwise. If your Docker daemon uses a different
-architecture, pass `-Djib.from.platforms=linux/arm64` or `-Djib.from.platforms=linux/amd64`.
+For a local image, build and load it into Docker with Jib.
 
 ```bash
 ./gradlew :spring-ai-inspector-server:build :spring-ai-inspector-server:jibDockerBuild \

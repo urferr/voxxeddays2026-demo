@@ -99,8 +99,7 @@ jobs:
           bash ./gradlew build :spring-ai-inspector-starter:java17Test \
             :spring-ai-inspector-starter:generatePomFileForMavenJavaPublication \
             :spring-ai-inspector-server:jibBuildTar \
-            -PinspectorVersion="$INSPECTOR_VERSION" -Djib.to.image=inspector-server:ci \
-            -Djib.from.platforms=linux/amd64 --no-daemon
+            -PinspectorVersion="$INSPECTOR_VERSION" -Djib.to.image=inspector-server:ci --no-daemon
       - name: Smoke-test Jib image
         id: smoke
         run: |
