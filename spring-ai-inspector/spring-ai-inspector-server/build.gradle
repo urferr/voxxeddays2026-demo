@@ -19,13 +19,15 @@ tasks.named('jar') {
 	enabled = false
 }
 
+def hostArchitecture = providers.systemProperty('os.arch').get()
+
 jib {
 	containerizingMode = 'packaged'
 	from {
 		image = 'eclipse-temurin:25-jre'
 		platforms {
 			platform {
-				architecture = 'amd64'
+				architecture = hostArchitecture in ['aarch64', 'arm64'] ? 'arm64' : 'amd64'
 				os = 'linux'
 			}
 		}
