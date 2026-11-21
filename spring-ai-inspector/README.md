@@ -277,8 +277,9 @@ git push origin inspector-v0.0.1
 
 Tag `inspector-v0.0.1` publishes starter version `0.0.1` and image tags `0.0.1`, `sha-<commit>`, and
 `latest`. Prereleases and snapshots do not update `latest`; image tags are lowercase
-(for example `0.0.2-snapshot`). Use a new version for each release. The Maven and container publish
-jobs are independent after successful verification; one may succeed while the other fails.
+(for example `0.0.2-snapshot`). Use a new version for each release. CI builds the image with Jib,
+smoke-tests it, and pushes that image to GHCR. The Maven publication can proceed after successful
+verification even if the push to GHCR fails.
 
 For a local Maven publication, use your existing `gpr.user` and `gpr.key` properties in
 `~/.gradle/gradle.properties`. These take precedence over the environment-variable fallbacks
@@ -361,11 +362,11 @@ docker run --rm -p 127.0.0.1:9001:9001 ghcr.io/urferr/spring-ai-inspector-server
 
 To allow unauthenticated pulls, change the container package visibility to public in GitHub's package settings.
 
-For a local image, build the JAR first:
+For a local image, build and load it into Docker with Jib.
 
 ```bash
-./gradlew :spring-ai-inspector-server:build
-docker build -t spring-ai-inspector-server:local spring-ai-inspector-server
+./gradlew :spring-ai-inspector-server:build :spring-ai-inspector-server:jibDockerBuild \
+  -Djib.to.image=spring-ai-inspector-server:local
 docker run --rm -p 127.0.0.1:9001:9001 spring-ai-inspector-server:local
 ```
 

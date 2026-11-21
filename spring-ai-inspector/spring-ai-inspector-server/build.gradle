@@ -1,6 +1,7 @@
 plugins {
 	id 'org.springframework.boot'
 	id 'io.spring.dependency-management'
+	id 'com.google.cloud.tools.jib' version '3.5.4'
 }
 
 dependencies {
@@ -16,6 +17,33 @@ tasks.named('bootJar') {
 
 tasks.named('jar') {
 	enabled = false
+}
+
+jib {
+	containerizingMode = 'packaged'
+	from {
+		image = 'eclipse-temurin:25-jre'
+		platforms {
+			platform {
+				architecture = 'amd64'
+				os = 'linux'
+			}
+		}
+	}
+	to {
+		image = "spring-ai-inspector-server:${project.version}"
+	}
+	container {
+		mainClass = 'org.springaicommunity.inspector.server.InspectorApplication'
+		user = '10001:10001'
+		ports = ['9001']
+		environment = ['SERVER_ADDRESS': '0.0.0.0']
+		workingDirectory = '/app'
+		labels = providers.environmentVariable('INSPECTOR_IMAGE_METADATA')
+			.filter { !it.isBlank() }
+			.map { new groovy.json.JsonSlurper().parseText(it).labels }
+			.getOrElse(['org.opencontainers.image.source': 'https://github.com/urferr/voxxeddays2026-demo'])
+	}
 }
 
 tasks.register('uiTest', Exec) {
